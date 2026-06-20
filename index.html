@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buscador de Depto</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#F0EDE8; --surface:#FFFFFF; --surface2:#E8E4DE; --border:#D4CFC8;
+      --ink:#1A1916; --ink2:#6B6660; --accent:#2D6A4F; --accent-lt:#D8EDD6;
+      --warn:#C9622F; --warn-lt:#FAE5D8; --yellow:#E8A838; --yellow-lt:#FDF3DC;
+      --radius:10px; --mono:'DM Mono',monospace; --sans:'DM Sans',sans-serif;
+    }
+    body { font-family:var(--sans); background:var(--bg); color:var(--ink); min-height:100vh; }
+
+    /* LOGIN SCREEN */
+    #loginScreen {
+      display:none; position:fixed; inset:0;
+      background:var(--bg); z-index:999;
+      align-items:center; justify-content:center; flex-direction:column; gap:24px;
+    }
+    #loginScreen.visible { display:flex; }
+    .login-card {
+      background:var(--surface); border:1px solid var(--border); border-radius:16px;
+      padding:40px 48px; text-align:center; max-width:360px; width:90%;
+      box-shadow:0 8px 32px rgba(0,0,0,.1);
+    }
+    .login-card h1 { font-size:1.5rem; font-weight:700; margin-bottom:6px; }
+    .login-card p  { font-size:.88rem; color:var(--ink2); margin-bottom:28px; line-height:1.5; }
+    .btn-google {
+      display:inline-flex; align-items:center; gap:10px;
+      background:#fff; border:1px solid var(--border); border-radius:8px;
+      padding:11px 20px; font-family:var(--sans); font-size:.9rem; font-weight:500;
+      cursor:pointer; transition:box-shadow .15s; color:var(--ink);
+      box-shadow:0 1px 4px rgba(0,0,0,.08);
+    }
+    .btn-google:hover { box-shadow:0 2px 10px rgba(0,0,0,.14); }
+    .btn-google svg { width:18px; height:18px; flex-shrink:0; }
+    #loginError { font-size:.78rem; color:var(--warn); margin-top:14px; min-height:1rem; }
+
+    /* SYNC BADGE */
+    #syncBadge {
+      font-family:var(--mono); font-size:.68rem; padding:3px 9px; border-radius:20px;
+      background:#333; color:#aaa; transition:all .3s;
+    }
+    #syncBadge.synced  { background:var(--accent-lt); color:#1A5235; }
+    #syncBadge.syncing { background:var(--yellow-lt); color:#8B6914; }
+    #syncBadge.error   { background:var(--warn-lt);   color:#7D2E0D; }
+
+    /* USER AVATAR */
+    #userAvatar {
+      width:30px; height:30px; border-radius:50%; object-fit:cover;
+      border:2px solid rgba(255,255,255,.3); cursor:pointer;
+    }
+    #btnLogout {
+      font-family:var(--mono); font-size:.68rem; background:none; border:1px solid rgba(255,255,255,.25);
+      color:#ccc; border-radius:6px; padding:4px 10px; cursor:pointer; white-space:nowrap;
+    }
+    #btnLogout:hover { background:rgba(255,255,255,.08); }
+
+    header {
+      background:var(--ink); color:#fff; padding:14px 24px;
+      display:flex; align-items:center; gap:12px;
+      position:sticky; top:0; z-index:100;
+    }
+    header h1 { font-size:1.05rem; font-weight:500; letter-spacing:.02em; }
+    .counter { font-family:var(--mono); font-size:.78rem; color:#aaa; margin-left:auto; }
+    .btn-primary {
+      background:var(--accent); color:#fff; border:none; border-radius:var(--radius);
+      padding:8px 16px; font-family:var(--sans); font-size:.85rem; font-weight:500;
+      cursor:pointer; transition:opacity .15s;
+    }
+    .btn-primary:hover { opacity:.85; }
+
+    .app {
+      display:grid;
+      grid-template-columns:340px 1fr 380px;
+      grid-template-rows:1fr;
+      height:calc(100vh - 57px);
+    }
+    .sidebar {
+      grid-column:1; grid-row:1;
+      background:var(--surface); border-right:1px solid var(--border);
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    .sidebar-top { padding:16px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:10px; }
+    input[type="text"],input[type="number"],input[type="url"],textarea,select {
+      font-family:var(--sans); font-size:.85rem; border:1px solid var(--border);
+      border-radius:6px; padding:7px 10px; background:var(--bg); color:var(--ink);
+      outline:none; transition:border-color .15s; width:100%;
+    }
+    input:focus,textarea:focus,select:focus { border-color:var(--accent); }
+    .filter-row { display:flex; gap:8px; }
+    .filter-row select { flex:1; }
+    .sort-chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    .chip {
+      font-family:var(--mono); font-size:.7rem; padding:4px 9px; border-radius:20px;
+      border:1px solid var(--border); background:transparent; color:var(--ink2);
+      cursor:pointer; transition:all .15s;
+    }
+    .chip.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+    .fchip {
+      font-family:var(--mono); font-size:.7rem; padding:4px 10px; border-radius:20px;
+      border:1px solid var(--border); background:transparent; color:var(--ink2);
+      cursor:pointer; transition:all .15s;
+    }
+    .fchip.active-pendiente  { background:var(--yellow);  border-color:var(--yellow);  color:#fff; }
+    .fchip.active-visitado   { background:var(--accent);  border-color:var(--accent);  color:#fff; }
+    .fchip.active-favorito   { background:#7C3AED;        border-color:#7C3AED;        color:#fff; }
+    .fchip.active-descartado { background:var(--warn);    border-color:var(--warn);    color:#fff; }
+    .dept-list { flex:1; overflow-y:auto; padding:10px 10px 24px; }
+
+    .card {
+      background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);
+      padding:13px 14px; margin-bottom:8px; cursor:pointer;
+      transition:border-color .15s,box-shadow .15s;
+    }
+    .card:hover { border-color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.07); }
+    .card.selected { border-color:var(--accent); background:#fff; box-shadow:0 2px 12px rgba(45,106,79,.12); }
+    .card-top { display:flex; align-items:flex-start; gap:8px; }
+    .card-title { font-weight:500; font-size:.9rem; flex:1; line-height:1.3; }
+    .badge { font-family:var(--mono); font-size:.65rem; padding:3px 7px; border-radius:20px; white-space:nowrap; font-weight:500; }
+    .badge-pendiente  { background:var(--yellow-lt); color:#8B6914; }
+    .badge-visitado   { background:var(--accent-lt); color:#1A5235; }
+    .badge-descartado { background:var(--warn-lt);   color:#7D2E0D; }
+    .badge-favorito   { background:#EDE0FF;           color:#4A1D8A; }
+    .card-meta { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:8px; }
+    .meta-item { font-family:var(--mono); font-size:.72rem; color:var(--ink2); display:flex; align-items:center; gap:4px; }
+    .meta-item strong { color:var(--ink); font-weight:500; }
+    .stars { display:flex; gap:2px; margin-top:8px; }
+    .star { font-size:.95rem; color:var(--border); cursor:pointer; background:none; border:none; padding:0; line-height:1; transition:color .1s; }
+    .star.lit { color:var(--yellow); }
+    .card-note { font-size:.75rem; color:var(--ink2); margin-top:7px; line-height:1.4; font-style:italic; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+
+    #map { grid-column:2; grid-row:1; width:100%; height:100%; min-height:400px; z-index:1; }
+
+    .detail {
+      grid-column:3; grid-row:1;
+      background:var(--surface); border-left:1px solid var(--border);
+      overflow-y:auto; padding:24px; display:none; flex-direction:column; gap:20px;
+    }
+    .detail.open { display:flex; }
+    .app.no-detail #map { grid-column:2 / -1; }
+    .detail-header { display:flex; align-items:flex-start; gap:12px; }
+    .detail-header h2 { font-size:1.1rem; font-weight:600; flex:1; }
+    .btn-close { background:var(--surface2); border:none; border-radius:6px; width:30px; height:30px; font-size:1rem; cursor:pointer; color:var(--ink2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .btn-close:hover { background:var(--border); }
+    .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .detail-field label { font-family:var(--mono); font-size:.68rem; color:var(--ink2); text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:4px; }
+    .detail-field .val { font-size:.9rem; font-weight:500; }
+    .detail-field.full { grid-column:1/3; }
+    .detail-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .btn-status { font-family:var(--sans); font-size:.8rem; font-weight:500; padding:6px 14px; border-radius:20px; border:1px solid var(--border); cursor:pointer; background:transparent; color:var(--ink2); transition:all .15s; }
+    .btn-status.active-pendiente  { background:var(--yellow); border-color:var(--yellow); color:#fff; }
+    .btn-status.active-visitado   { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .btn-status.active-descartado { background:var(--warn);   border-color:var(--warn);   color:#fff; }
+    .btn-status.active-favorito   { background:#7C3AED;       border-color:#7C3AED;       color:#fff; }
+    .notes-area { resize:vertical; min-height:90px; }
+    .btn-link { display:inline-flex; align-items:center; gap:6px; font-size:.82rem; color:var(--accent); text-decoration:none; font-weight:500; }
+    .btn-link:hover { text-decoration:underline; }
+    .btn-danger { font-family:var(--sans); font-size:.8rem; color:var(--warn); background:none; border:1px solid var(--warn); border-radius:6px; padding:6px 14px; cursor:pointer; }
+    .btn-danger:hover { background:var(--warn-lt); }
+
+    .ai-section { background:var(--surface2); border-radius:var(--radius); padding:14px; display:flex; flex-direction:column; gap:10px; }
+    .ai-section label { font-family:var(--mono); font-size:.68rem; color:var(--ink2); text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:4px; }
+    .ai-row { display:flex; gap:8px; }
+    .ai-row input { flex:1; }
+    .btn-ai { background:#7C3AED; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-family:var(--sans); font-size:.82rem; font-weight:500; cursor:pointer; white-space:nowrap; transition:opacity .15s; }
+    .btn-ai:hover { opacity:.85; }
+    .btn-ai:disabled { opacity:.5; cursor:not-allowed; }
+    #aiStatus { font-size:.75rem; color:var(--ink2); font-style:italic; min-height:1rem; }
+
+    .overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:200; align-items:center; justify-content:center; }
+    .overlay.open { display:flex; }
+    .modal { background:var(--surface); border-radius:14px; padding:28px; width:min(520px,95vw); max-height:90vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal h2 { font-size:1rem; font-weight:600; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .form-field label { font-family:var(--mono); font-size:.68rem; color:var(--ink2); text-transform:uppercase; letter-spacing:.05em; display:block; margin-bottom:5px; }
+    .form-field.full { grid-column:1/3; }
+    .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:4px; }
+    .btn-ghost { background:none; border:1px solid var(--border); border-radius:8px; padding:8px 16px; font-family:var(--sans); font-size:.85rem; cursor:pointer; color:var(--ink2); }
+    .btn-ghost:hover { background:var(--bg); }
+    .empty { padding:32px 20px; text-align:center; color:var(--ink2); }
+    .link-preview {
+      border:1px solid var(--border); border-radius:var(--radius);
+      overflow:hidden; text-decoration:none; display:none;
+      flex-direction:row; align-items:center; gap:12px;
+      padding:12px 14px; background:var(--bg);
+      transition:box-shadow .15s;
+    }
+    .link-preview:hover { box-shadow:0 2px 8px rgba(0,0,0,.08); border-color:var(--accent); }
+    .link-preview-icon {
+      width:36px; height:36px; border-radius:8px; flex-shrink:0;
+      background:var(--surface2); display:flex; align-items:center; justify-content:center;
+      font-size:1.1rem;
+    }
+    .link-preview-body { flex:1; min-width:0; }
+    .link-preview-title { font-size:.82rem; font-weight:500; color:var(--ink); line-height:1.3; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .link-preview-url { font-family:var(--mono); font-size:.68rem; color:var(--ink2); }
+    .link-preview-arrow { font-size:.9rem; color:var(--ink2); flex-shrink:0; }
+    .empty p { font-size:.85rem; line-height:1.6; }
+    .leaflet-popup-content-wrapper { border-radius:8px !important; box-shadow:0 4px 16px rgba(0,0,0,.18) !important; font-family:var(--sans) !important; }
+    .popup-title { font-weight:600; font-size:.9rem; margin-bottom:4px; }
+    .popup-meta  { font-size:.78rem; color:var(--ink2); }
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+    @media (max-width:700px) {
+      .app { grid-template-columns:1fr; height:auto; }
+      .sidebar { grid-row:auto; height:55vh; border-right:none; border-bottom:1px solid var(--border); }
+      #map { height:280px; }
+      .detail { border-left:none; }
+      .form-row { grid-template-columns:1fr; }
+      .form-field.full { grid-column:1; }
+      .detail-grid { grid-template-columns:1fr; }
+      .detail-field.full { grid-column:1; }
+    }
+
+    /* ── NAV TABS ── */
+    .nav-tabs { display:flex; gap:2px; margin-left:16px; }
+    .nav-tab {
+      font-family:var(--mono); font-size:.72rem; padding:5px 12px;
+      border-radius:6px; border:none; background:rgba(255,255,255,.1);
+      color:#ccc; cursor:pointer; transition:all .15s;
+    }
+    .nav-tab.active { background:#fff; color:var(--ink); font-weight:500; }
+    .nav-tab:hover:not(.active) { background:rgba(255,255,255,.18); color:#fff; }
+
+    /* ── DASHBOARD ── */
+    #dashView {
+      display:none; grid-column:1/-1;
+      background:var(--bg); overflow-y:auto; padding:28px 32px;
+    }
+    #dashView.open { display:block; }
+
+    .dash-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+    .dash-stat {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius); padding:18px 20px;
+    }
+    .dash-stat .stat-val { font-size:1.8rem; font-weight:700; line-height:1; margin-bottom:4px; }
+    .dash-stat .stat-lbl { font-family:var(--mono); font-size:.65rem; color:var(--ink2); text-transform:uppercase; letter-spacing:.06em; }
+
+    .dash-section { margin-bottom:28px; }
+    .dash-section h3 { font-size:.75rem; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--ink2); margin-bottom:14px; font-family:var(--mono); }
+
+    .gastos-input { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
+    .gastos-input .gi { display:flex; flex-direction:column; gap:4px; }
+    .gastos-input label { font-family:var(--mono); font-size:.65rem; text-transform:uppercase; color:var(--ink2); letter-spacing:.05em; }
+    .gastos-input input { font-family:var(--mono); font-size:.82rem; border:1px solid var(--border); border-radius:5px; padding:5px 8px; background:var(--bg); color:var(--ink); width:120px; }
+    .gastos-input input:focus { border-color:var(--accent); outline:none; }
+    .gastos-note { font-size:.72rem; color:var(--ink2); margin-top:4px; line-height:1.4; }
+
+    /* RANKING */
+    .rank-row {
+      background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      padding:14px 16px; margin-bottom:8px; cursor:pointer;
+      display:grid; grid-template-columns:28px 1fr auto;
+      gap:12px; align-items:center;
+      transition:box-shadow .15s, border-color .15s;
+    }
+    .rank-row:hover { border-color:var(--accent); box-shadow:0 2px 10px rgba(0,0,0,.08); }
+    .rank-row.descartado-row { opacity:.55; }
+    .rank-num {
+      font-family:var(--mono); font-size:.85rem; font-weight:700;
+      color:var(--ink2); text-align:center;
+    }
+    .rank-num.gold   { color:#C9A227; }
+    .rank-num.silver { color:#8A8A8A; }
+    .rank-num.bronze { color:#A0522D; }
+    .rank-body { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .rank-title { font-weight:500; font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:8px; }
+    .rank-bars { display:flex; flex-direction:column; gap:3px; }
+    .rank-bar-row { display:flex; align-items:center; gap:8px; }
+    .rank-bar-label { font-family:var(--mono); font-size:.62rem; color:var(--ink2); width:70px; flex-shrink:0; }
+    .rank-bar-track { flex:1; background:var(--surface2); border-radius:3px; height:6px; overflow:hidden; }
+    .rank-bar-fill  { height:100%; border-radius:3px; transition:width .5s; }
+    .rank-bar-val   { font-family:var(--mono); font-size:.68rem; color:var(--ink2); width:90px; text-align:right; flex-shrink:0; }
+    .rank-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; }
+    .rank-stars { color:var(--yellow); font-size:.85rem; letter-spacing:1px; }
+    .rank-total { font-family:var(--mono); font-size:.82rem; font-weight:600; }
+    .rank-total.best  { color:var(--accent); }
+    .rank-total.worst { color:var(--warn); }
+    .rank-pm2 { font-family:var(--mono); font-size:.68rem; color:var(--ink2); }
+
+    @media (max-width:700px) {
+      .dash-grid { grid-template-columns:repeat(2,1fr); }
+      #dashView { padding:16px; }
+      .rank-row { grid-template-columns:24px 1fr; }
+      .rank-right { display:none; }
+    }
+
+    /* ── VISITA ── */
+    .visita-card {
+      background:var(--surface2); border:1px solid var(--border);
+      border-radius:var(--radius); padding:14px;
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .visita-badge {
+      display:inline-flex; align-items:center; gap:6px;
+      font-family:var(--mono); font-size:.72rem; font-weight:500;
+      padding:4px 10px; border-radius:20px;
+      background:#E0F0FF; color:#1A5A8A;
+    }
+    .visita-badge.pasada { background:var(--accent-lt); color:#1A5235; }
+    .visita-badge.hoy    { background:var(--yellow-lt); color:#8B6914; }
+    .visita-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .visita-field label { font-family:var(--mono); font-size:.65rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ink2); display:block; margin-bottom:4px; }
+    .btn-calendar {
+      display:inline-flex; align-items:center; gap:8px;
+      background:#4285F4; color:#fff; border:none; border-radius:8px;
+      padding:9px 16px; font-family:var(--sans); font-size:.82rem;
+      font-weight:500; cursor:pointer; text-decoration:none;
+      transition:opacity .15s; width:fit-content;
+    }
+    .btn-calendar:hover { opacity:.85; }
+    .btn-del-visita { font-family:var(--sans); font-size:.75rem; color:var(--ink2); background:none; border:none; cursor:pointer; text-decoration:underline; }
+    .btn-del-visita:hover { color:var(--warn); }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>🏠 Buscador de depto</h1>
+    <p>Iniciá sesión para acceder a tus propiedades guardadas desde cualquier dispositivo.</p>
+    <button class="btn-google" onclick="signIn()">
+      <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Entrar con Google
+    </button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<header>
+  <h1>🏠 Buscador de depto</h1>
+  <div class="nav-tabs">
+    <button class="nav-tab active" id="tab-mapa" onclick="switchView('mapa')">Mapa</button>
+    <button class="nav-tab" id="tab-dash" onclick="switchView('dash')">Dashboard</button>
+  </div>
+  <span id="syncBadge">Conectando…</span>
+  <span class="counter" id="counter">0 propiedades</span>
+  <button class="btn-primary" onclick="openModal()">+ Agregar</button>
+  <img id="userAvatar" src="" alt="" style="display:none" title="Tu cuenta" />
+  <button id="btnLogout" onclick="signOut()" style="display:none">Salir</button>
+</header>
+
+<div class="app" id="appGrid">
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <input type="text" id="search" placeholder="Buscar por dirección o barrio…" oninput="renderList()" />
+      <div class="filter-chips" style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="fchip" data-status="pendiente" onclick="toggleFilter(this)">⏳ Pendiente</button>
+        <button class="fchip" data-status="visitado"  onclick="toggleFilter(this)">✅ Visitado</button>
+        <button class="fchip" data-status="favorito"  onclick="toggleFilter(this)">⭐ Favorito</button>
+        <button class="fchip" data-status="descartado" onclick="toggleFilter(this)">✖ Descartado</button>
+      </div>
+      <div class="sort-chips">
+        <span style="font-size:.72rem;color:var(--ink2);">Ordenar:</span>
+        <button class="chip active" data-sort="fecha" onclick="setSort(this)">Recientes</button>
+        <button class="chip" data-sort="precio" onclick="setSort(this)">Precio</button>
+        <button class="chip" data-sort="puntaje" onclick="setSort(this)">Puntaje</button>
+        <button class="chip" data-sort="m2" onclick="setSort(this)">m²</button>
+      </div>
+    </div>
+    <div class="dept-list" id="deptList"></div>
+  </aside>
+
+  <div id="map"></div>
+
+  <div class="detail" id="detail">
+    <div class="detail-header">
+      <h2 id="d-title">—</h2>
+      <button class="btn-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-actions" id="d-statusBtns"></div>
+    <div id="d-geo-row" style="display:none;align-items:center;gap:8px;">
+      <span style="font-size:.75rem;color:var(--ink2);">📍 Sin ubicación en el mapa</span>
+      <button onclick="regeoSelected()" style="font-family:var(--sans);font-size:.75rem;color:var(--accent);background:none;border:1px solid var(--accent);border-radius:6px;padding:4px 10px;cursor:pointer;">Ubicar ahora</button>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-field"><label>Alquiler</label><div class="val" id="d-precio">—</div></div>
+      <div class="detail-field"><label>Expensas</label><div class="val" id="d-expensas">—</div></div>
+      <div class="detail-field"><label>Superficie</label><div class="val" id="d-m2">—</div></div>
+      <div class="detail-field"><label>Ambientes</label><div class="val" id="d-amb">—</div></div>
+      <div class="detail-field full"><label>Puntaje</label><div class="stars" id="d-stars"></div></div>
+      <div class="detail-field full"><label>Puntos de referencia</label><div class="val" id="d-refs" style="font-size:.82rem;font-weight:400;color:var(--ink2);">—</div></div>
+      <div class="detail-field">
+        <label>AYSA</label>
+        <div class="val" id="d-aysa">—</div>
+      </div>
+      <div class="detail-field">
+        <label>ABL</label>
+        <div class="val" id="d-abl">—</div>
+      </div>
+      <div class="detail-field full"><label>Notas de visita</label><textarea class="notes-area" id="d-notes" placeholder="Anotá lo que observaste en la visita…" oninput="saveNotes()"></textarea></div>
+      <div class="detail-field full">
+        <label>Ficha online</label>
+        <a class="link-preview" id="d-preview" href="#" target="_blank" rel="noopener">
+          <div class="link-preview-icon" id="d-preview-favicon">🏠</div>
+          <div class="link-preview-body">
+            <div class="link-preview-title" id="d-preview-title"></div>
+            <div class="link-preview-url" id="d-preview-url"></div>
+          </div>
+          <div class="link-preview-arrow">↗</div>
+        </a>
+        <a id="d-link" href="#" target="_blank" style="display:none;"></a>
+      </div>
+    </div>
+    <!-- VISITA -->
+    <div class="detail-field full">
+      <label>Visita programada</label>
+      <div id="d-visita-display"></div>
+      <div id="d-visita-form" style="display:none;" class="visita-card">
+        <div class="visita-row">
+          <div class="visita-field">
+            <label>Fecha</label>
+            <input type="date" id="v-fecha" style="width:100%" />
+          </div>
+          <div class="visita-field">
+            <label>Hora</label>
+            <input type="time" id="v-hora" style="width:100%" />
+          </div>
+        </div>
+        <div class="visita-field">
+          <label>Contacto (nombre y teléfono)</label>
+          <input type="text" id="v-contacto" placeholder="Ej: María 11-1234-5678" style="width:100%" />
+        </div>
+        <div class="visita-field">
+          <label>Notas para la visita</label>
+          <textarea id="v-notas" placeholder="Ej: llevar DNI, preguntar por cochera…" style="width:100%;min-height:60px;resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-primary" style="font-size:.8rem;" onclick="saveVisita()">Guardar visita</button>
+          <button class="btn-ghost" style="font-size:.8rem;" onclick="toggleVisitaForm(false)">Cancelar</button>
+        </div>
+      </div>
+      <button id="btn-agendar" class="btn-primary" style="font-size:.8rem;margin-top:6px;display:none;" onclick="toggleVisitaForm(true)">📅 Agendar visita</button>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="btn-primary" style="font-size:.8rem;" onclick="editSelected()">✏️ Editar</button>
+      <button class="btn-danger" onclick="deleteSelected()">Eliminar</button>
+    </div>
+  </div>
+  <!-- DASHBOARD -->
+  <div id="dashView" style="grid-column:1/-1;">
+    <div class="dash-section">
+      <div class="dash-grid" id="dash-stats"></div>
+    </div>
+
+    <div class="dash-section">
+      <h3>Gastos adicionales estimados</h3>
+      <div class="gastos-input">
+        <div class="gi"><label>Internet ($/mes)</label><input type="number" id="gi-internet" placeholder="6000" oninput="renderDash()" /></div>
+        <div class="gi"><label>Luz ($/mes)</label><input type="number" id="gi-luz" placeholder="15000" oninput="renderDash()" /></div>
+        <div class="gi"><label>Gas ($/mes)</label><input type="number" id="gi-gas" placeholder="10000" oninput="renderDash()" /></div>
+        <div class="gi"><label>Otro ($/mes)</label><input type="number" id="gi-otro" placeholder="0" oninput="renderDash()" /></div>
+      </div>
+      <p class="gastos-note">Estos valores se suman al alquiler + expensas para calcular el costo total mensual estimado.</p>
+    </div>
+
+    <div class="dash-section">
+      <h3>Ranking visual de propiedades</h3>
+      <div id="dash-ranking"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <h2 id="modal-title">Agregar departamento</h2>
+    <div class="ai-section">
+      <label>✨ Autocompletar</label>
+      <div class="ai-tabs" style="display:flex;gap:6px;margin-bottom:10px;">
+        <button class="chip active" id="tab-url" onclick="setAiTab('url')">Link (Zonaprop / Argenprop)</button>
+        <button class="chip" id="tab-ml" onclick="setAiTab('ml')">JSON de MercadoLibre</button>
+      </div>
+      <div id="ai-panel-url">
+        <div class="ai-row">
+          <input type="url" id="ai-url" placeholder="https://www.zonaprop.com.ar/…" />
+          <button class="btn-ai" id="btn-ai" onclick="aiParse()">Analizar</button>
+        </div>
+      </div>
+      <div id="ai-panel-ml" style="display:none;">
+        <p style="font-size:.75rem;color:var(--ink2);margin-bottom:8px;line-height:1.5;">
+          1. Copiá el ID del link de ML (ej: <code style="background:var(--border);padding:1px 5px;border-radius:3px;">MLA3464238982</code>)<br>
+          2. Abrí en el browser: <span id="ml-api-link" style="color:var(--accent);font-size:.72rem;">https://api.mercadolibre.com/items/MLA<strong>ID</strong></span><br>
+          3. Copiá todo el texto y pegalo acá abajo
+        </p>
+        <div class="ai-row" style="align-items:flex-start;flex-direction:column;gap:8px;">
+          <input type="text" id="ml-id" placeholder="MLA3464238982" oninput="updateMLLink()" style="font-family:var(--mono);font-size:.8rem;" />
+          <textarea id="ml-json" placeholder='Pegá el JSON de la API acá…' style="min-height:80px;resize:vertical;font-family:var(--mono);font-size:.72rem;"></textarea>
+          <button class="btn-ai" onclick="mlJsonParse()">Extraer datos</button>
+        </div>
+      </div>
+      <div id="aiStatus"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-field full"><label>Dirección / nombre</label><input type="text" id="f-titulo" placeholder="Ej: Av. Santa Fe 1234, Palermo" /></div>
+      <div class="form-field"><label>Alquiler (ARS)</label><input type="number" id="f-precio" placeholder="350000" /></div>
+      <div class="form-field"><label>Expensas (ARS)</label><input type="number" id="f-expensas" placeholder="45000" /></div>
+      <div class="form-field"><label>Superficie (m²)</label><input type="number" id="f-m2" placeholder="55" /></div>
+      <div class="form-field"><label>Ambientes</label>
+        <select id="f-amb">
+          <option value="">—</option>
+          <option value="Monoambiente">Monoambiente</option>
+          <option value="2 amb">2 amb</option>
+          <option value="3 amb">3 amb</option>
+          <option value="4 amb">4 amb</option>
+          <option value="5+ amb">5+ amb</option>
+        </select>
+      </div>
+      <div class="form-field full"><label>Link a la ficha</label><input type="url" id="f-link" placeholder="https://…" /></div>
+      <div class="form-field full"><label>Puntos de referencia</label><input type="text" id="f-refs" placeholder="Ej: 15 min al trabajo, cerca del subte B" /></div>
+      <div class="form-field">
+        <label>AYSA ($/mes)</label>
+        <input type="number" id="f-aysa" placeholder="22000" />
+      </div>
+      <div class="form-field">
+        <label>ABL ($/mes)</label>
+        <input type="number" id="f-abl" placeholder="15000" />
+      </div>
+      <div class="form-field full" style="position:relative;">
+        <label>Dirección para geolocalizar</label>
+        <input type="text" id="f-geoaddr" placeholder="Av. Santa Fe 1234, Buenos Aires"
+          autocomplete="off" oninput="geoSuggest(this.value)" />
+        <div id="geo-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:999;max-height:180px;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="saveDepto()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp }                        from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, remove, update }
+                                                from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, onAuthStateChanged }
+                                                from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDeEVXpNygzUe5_hqh1zpIx80YAwGZaNzU",
+  authDomain: "buscador-28bf5.firebaseapp.com",
+  databaseURL: "https://buscador-28bf5-default-rtdb.firebaseio.com",
+  projectId: "buscador-28bf5",
+  storageBucket: "buscador-28bf5.firebasestorage.app",
+  messagingSenderId: "921746223770",
+  appId: "1:921746223770:web:7d34edf4bd9b2fec9c2523"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db          = getDatabase(firebaseApp);
+const auth        = getAuth(firebaseApp);
+const provider    = new GoogleAuthProvider();
+
+// ── STATE ──────────────────────────────────────────────
+let deptos     = {};
+let selectedId = null;
+let editingId  = null;
+let sortBy     = 'fecha';
+let currentUid = null;
+let dbUnsub    = null;
+let map, markers = {};
+
+// ── AUTH ───────────────────────────────────────────────
+window.signIn = async () => {
+  document.getElementById('loginError').textContent = '';
+  try { await signInWithPopup(auth, provider); }
+  catch(e) { document.getElementById('loginError').textContent = 'No se pudo iniciar sesión. Intentá de nuevo.'; }
+};
+window.signOut = async () => {
+  if (dbUnsub) dbUnsub();
+  await fbSignOut(auth);
+};
+
+onAuthStateChanged(auth, user => {
+  if (user) {
+    currentUid = user.uid;
+    document.getElementById('loginScreen').classList.remove('visible');
+    const av = document.getElementById('userAvatar');
+    if (user.photoURL) { av.src = user.photoURL; av.style.display = 'block'; }
+    document.getElementById('btnLogout').style.display = 'block';
+    subscribeDB();
+  } else {
+    currentUid = null;
+    deptos = {};
+    if (map) { Object.values(markers).forEach(m=>m.remove()); markers={}; }
+    renderList();
+    document.getElementById('loginScreen').classList.add('visible');
+    document.getElementById('userAvatar').style.display = 'none';
+    document.getElementById('btnLogout').style.display  = 'none';
+  }
+});
+
+// ── FIREBASE DB ────────────────────────────────────────
+function subscribeDB() {
+  if (dbUnsub) dbUnsub();
+  const r = ref(db, `users/${currentUid}/deptos`);
+  dbUnsub = onValue(r, snap => {
+    deptos = snap.val() || {};
+    setBadge('synced');
+    Object.values(markers).forEach(m=>m.remove()); markers={};
+    Object.values(deptos).forEach(addMarker);
+    renderList();
+    if (selectedId && deptos[selectedId]) selectDepto(selectedId);
+  }, () => setBadge('error'));
+}
+
+function dbPath(id) { return `users/${currentUid}/deptos/${id}`; }
+function persist(id, data) { setBadge('syncing'); set(ref(db, dbPath(id)), data).then(()=>setBadge('synced')).catch(()=>setBadge('error')); }
+function del(id)           { setBadge('syncing'); remove(ref(db, dbPath(id))).then(()=>setBadge('synced')).catch(()=>setBadge('error')); }
+function patch(id, partial){ setBadge('syncing'); update(ref(db, dbPath(id)), partial).then(()=>setBadge('synced')).catch(()=>setBadge('error')); }
+
+function setBadge(s) {
+  const b = document.getElementById('syncBadge');
+  b.className = s;
+  b.textContent = {synced:'● Sincronizado', syncing:'⟳ Guardando…', error:'✕ Sin conexión'}[s] || s;
+}
+
+// ── MAP ────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map').setView([-34.6037,-58.3816], 12);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:19}).addTo(map);
+}
+function markerColor(d){ return d.descartado ? '#C9622F' : ({pendiente:'#E8A838',visitado:'#2D6A4F',favorito:'#7C3AED'}[d.status]||'#555'); }
+function addMarker(d) {
+  if (!d.lat||!d.lng) return;
+  const color = markerColor(d);
+  const icon = L.divIcon({ className:'',
+    html:`<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`,
+    iconSize:[14,14],iconAnchor:[7,7] });
+  const m = L.marker([d.lat,d.lng],{icon}).addTo(map);
+  m.bindPopup(`<div class="popup-title">${d.titulo}</div><div class="popup-meta">${d.precio?'$'+Number(d.precio).toLocaleString('es-AR'):''} ${d.m2?'· '+d.m2+'m²':''}</div>`);
+  m.on('click',()=>selectDepto(d.id));
+  markers[d.id]=m;
+}
+function refreshMarker(d){ if(markers[d.id]){markers[d.id].remove();delete markers[d.id];} addMarker(d); }
+
+// ── GEOCODE ────────────────────────────────────────────
+async function geocode(addr) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr+', Buenos Aires, Argentina')}&limit=1`,{headers:{'Accept-Language':'es'}});
+    const d = await r.json();
+    if (d&&d[0]) return {lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon)};
+  } catch{}
+  return null;
+}
+
+// ── AI PARSE ───────────────────────────────────────────
+// ── HELPERS ────────────────────────────────────────────
+function mapAmbientes(rooms) {
+  if (!rooms) return null;
+  if (rooms === 1) return 'Monoambiente';
+  if (rooms <= 5) return rooms+' amb';
+  return '5+ amb';
+}
+
+function fillForm(parsed, url) {
+  if(parsed.titulo)   document.getElementById('f-titulo').value   = parsed.titulo;
+  if(parsed.precio)   document.getElementById('f-precio').value   = parsed.precio;
+  if(parsed.expensas) document.getElementById('f-expensas').value = parsed.expensas;
+  if(parsed.m2)       document.getElementById('f-m2').value       = parsed.m2;
+  if(parsed.amb)      document.getElementById('f-amb').value      = parsed.amb;
+  if(parsed.geoaddr)  document.getElementById('f-geoaddr').value  = parsed.geoaddr;
+  if(url) document.getElementById('f-link').value = url;
+}
+
+// ── AI TAB SWITCHER ────────────────────────────────────
+window.setAiTab = function(tab) {
+  document.getElementById('ai-panel-url').style.display = tab === 'url' ? 'block' : 'none';
+  document.getElementById('ai-panel-ml').style.display  = tab === 'ml'  ? 'block' : 'none';
+  document.getElementById('tab-url').className = 'chip' + (tab === 'url' ? ' active' : '');
+  document.getElementById('tab-ml').className  = 'chip' + (tab === 'ml'  ? ' active' : '');
+  document.getElementById('aiStatus').textContent = '';
+};
+
+window.updateMLLink = function() {
+  const id = document.getElementById('ml-id').value.trim().replace(/MLA-?/i,'');
+  const el = document.getElementById('ml-api-link');
+  if (id) {
+    el.innerHTML = `<a href="https://api.mercadolibre.com/items/MLA${id}" target="_blank" style="color:var(--accent)">https://api.mercadolibre.com/items/MLA${id} ↗</a>`;
+  } else {
+    el.innerHTML = `https://api.mercadolibre.com/items/MLA<strong>ID</strong>`;
+  }
+};
+
+// ── ML JSON PARSE ──────────────────────────────────────
+window.mlJsonParse = function() {
+  const status = document.getElementById('aiStatus');
+  const raw = document.getElementById('ml-json').value.trim();
+  const mlId = document.getElementById('ml-id').value.trim();
+  if (!raw) { status.textContent = '⚠️ Pegá el JSON primero.'; status.style.color='var(--warn)'; return; }
+  try {
+    const d = JSON.parse(raw);
+    let m2=null, amb=null, expensas=null;
+    if (d.attributes) {
+      for (const a of d.attributes) {
+        if ((a.id==='TOTAL_AREA'||a.id==='COVERED_AREA') && !m2) { const v=parseFloat(a.value_name); if(!isNaN(v)) m2=v; }
+        if (a.id==='ROOMS') amb = mapAmbientes(parseInt(a.value_name));
+        if (a.id==='EXPENSES_AMOUNT') expensas = parseFloat(a.value_name)||null;
+      }
+    }
+    const loc = d.location || {};
+    const partes = [loc.address_line, loc.neighborhood?.name, loc.city?.name].filter(Boolean);
+    const titulo = partes.length ? partes.join(', ') : (d.title||'');
+    const geoaddr = partes.join(', ') || d.title || '';
+    const cleanId = mlId.replace(/MLA-?/i,'');
+    const mlUrl = cleanId ? `https://departamento.mercadolibre.com.ar/MLA-${cleanId}` : '';
+    fillForm({ titulo, precio: d.price||null, expensas, m2, amb, geoaddr }, mlUrl);
+    status.textContent='✅ Datos cargados. Revisá y completá lo que falte.'; status.style.color='var(--accent)';
+  } catch(e) {
+    status.textContent='⚠️ JSON inválido. Copiá todo el contenido de la página de la API.'; status.style.color='var(--warn)';
+  }
+};
+
+// ── AI PARSE (portales via Netlify Function) ───────────
+window.aiParse = async function() {
+  const url = document.getElementById('ai-url').value.trim();
+  if (!url) return;
+  const btn = document.getElementById('btn-ai');
+  const status = document.getElementById('aiStatus');
+  btn.disabled=true; status.style.color=''; status.textContent='Analizando con IA…';
+  try {
+    const res = await fetch('/api/parse', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url })
+    });
+    if (!res.ok) throw new Error('Error '+res.status);
+    const parsed = await res.json();
+    if (parsed.error) throw new Error(parsed.error);
+    fillForm(parsed, url);
+    status.textContent='✅ Datos cargados. Revisá y completá lo que falte.'; status.style.color='var(--accent)';
+  } catch(e) {
+    console.error(e);
+    status.textContent='⚠️ No se pudo leer la publicación. Completá los datos a mano.'; status.style.color='var(--warn)';
+  }
+  btn.disabled=false;
+};
+
+
+// ── CRUD ───────────────────────────────────────────────
+window.saveDepto = async function() {
+  const titulo = document.getElementById('f-titulo').value.trim();
+  if(!titulo){alert('Ingresá al menos la dirección.');return;}
+  const btn = document.querySelector('.modal .btn-primary');
+  btn.textContent='Guardando…'; btn.disabled=true;
+  const geoAddrVal = document.getElementById('f-geoaddr').value.trim();
+  const geoAddr = geoAddrVal || titulo;
+  let lat=null,lng=null;
+  if(window._pendingGeo){
+    lat=window._pendingGeo.lat; lng=window._pendingGeo.lng; window._pendingGeo=null;
+  } else {
+    const geo = await geocode(geoAddr);
+    if(geo){lat=geo.lat;lng=geo.lng;}
+  }
+  if(editingId){
+    const updated={...deptos[editingId],titulo,
+      precio:   document.getElementById('f-precio').value,
+      expensas: document.getElementById('f-expensas').value,
+      m2:       document.getElementById('f-m2').value,
+      amb:      document.getElementById('f-amb').value,
+      link:     document.getElementById('f-link').value,
+      refs:     document.getElementById('f-refs').value,
+      aysa:     document.getElementById('f-aysa').value,
+      abl:      document.getElementById('f-abl').value,
+      geoaddr:  geoAddrVal,
+    };
+    if(lat){updated.lat=lat;updated.lng=lng;}
+    persist(editingId,updated); selectedId=editingId;
+  } else {
+    const id=Date.now().toString();
+    const d={id,titulo,lat,lng,
+      precio:   document.getElementById('f-precio').value,
+      expensas: document.getElementById('f-expensas').value,
+      m2:       document.getElementById('f-m2').value,
+      amb:      document.getElementById('f-amb').value,
+      link:     document.getElementById('f-link').value,
+      refs:     document.getElementById('f-refs').value,
+      aysa:     document.getElementById('f-aysa').value,
+      abl:      document.getElementById('f-abl').value,
+      geoaddr:  geoAddrVal,
+      status:'pendiente',puntaje:0,notas:'',fecha:Date.now()
+    };
+    persist(id,d); selectedId=id;
+  }
+  closeModal(); btn.textContent='Guardar'; btn.disabled=false;
+};
+
+window.deleteSelected = function(){
+  if(!selectedId||!confirm('¿Eliminar este departamento?')) return;
+  if(markers[selectedId]){markers[selectedId].remove();delete markers[selectedId];}
+  del(selectedId); selectedId=null; closeDetail();
+};
+
+// ── SELECT & DETAIL ────────────────────────────────────
+window.selectDepto = function(id){
+  selectedId=id; const d=deptos[id]; if(!d) return;
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+  const card=document.querySelector(`.card[data-id="${id}"]`);
+  if(card) card.classList.add('selected');
+  document.getElementById('d-title').textContent    = d.titulo;
+  document.getElementById('d-precio').textContent   = d.precio   ? '$'+Number(d.precio).toLocaleString('es-AR')   : '—';
+  document.getElementById('d-expensas').textContent = d.expensas ? '$'+Number(d.expensas).toLocaleString('es-AR') : '—';
+  document.getElementById('d-m2').textContent       = d.m2   ? d.m2+' m²' : '—';
+  document.getElementById('d-amb').textContent      = d.amb  || '—';
+  document.getElementById('d-refs').textContent = d.refs || '—';
+  document.getElementById('d-aysa').textContent = d.aysa ? '$'+Number(d.aysa).toLocaleString('es-AR') : '—';
+  document.getElementById('d-abl').textContent  = d.abl  ? '$'+Number(d.abl).toLocaleString('es-AR')  : '—';
+  document.getElementById('d-notes').value          = d.notas|| '';
+  const lk=document.getElementById('d-link');
+  const prev=document.getElementById('d-preview');
+  if(d.link){
+    lk.style.display='none'; // replaced by preview card
+    try {
+      const u = new URL(d.link);
+      const domain = u.hostname.replace('www.','');
+      // favicon via Google
+      const iconMap = {
+        'zonaprop.com.ar':'🏢','argenprop.com':'🏘','mercadolibre.com.ar':'🛒',
+        'departamento.mercadolibre.com.ar':'🛒','properati.com.ar':'🏠',
+        'remax.com.ar':'🔴','inmuebles24.com':'🏠'
+      };
+      const icon = Object.entries(iconMap).find(([k])=>domain.includes(k));
+      document.getElementById('d-preview-favicon').textContent = icon ? icon[1] : '🏠';
+      document.getElementById('d-preview-title').textContent = d.titulo || domain;
+      document.getElementById('d-preview-url').textContent = domain;
+      prev.href=d.link; prev.style.display='flex';
+    } catch(e) { prev.style.display='none'; }
+  } else {
+    lk.style.display='none'; prev.style.display='none';
+  }
+  renderStars(d); renderStatusBtns(d); renderVisita(d);
+  document.getElementById('d-geo-row').style.display = (!d.lat||!d.lng) ? 'flex' : 'none';
+  document.getElementById('detail').classList.add('open');
+  document.getElementById('appGrid').classList.remove('no-detail');
+  setTimeout(()=>{ if(map) map.invalidateSize(); },50);
+  if(d.lat&&d.lng){
+    map.flyTo([d.lat,d.lng],14,{duration:.8});
+    if(window._zoneCircle) window._zoneCircle.remove();
+    window._zoneCircle = L.circle([d.lat,d.lng],{
+      radius:400, color:'#2D6A4F', fillColor:'#2D6A4F',
+      fillOpacity:.08, weight:1.5, dashArray:'6,4'
+    }).addTo(map);
+  }
+};
+window.closeDetail = function(){
+  document.getElementById('detail').classList.remove('open');
+  document.getElementById('appGrid').classList.add('no-detail');
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+  selectedId=null;
+  setTimeout(()=>{ if(map) map.invalidateSize(); },50);
+};
+
+// ── STARS ──────────────────────────────────────────────
+function renderStars(d){
+  const el=document.getElementById('d-stars'); el.innerHTML='';
+  for(let i=1;i<=5;i++){
+    const b=document.createElement('button');
+    b.className='star'+(i<=d.puntaje?' lit':''); b.textContent='★';
+    b.onclick=()=>patch(d.id,{puntaje:i}); el.appendChild(b);
+  }
+}
+
+// ── STATUS ─────────────────────────────────────────────
+function renderStatusBtns(d){
+  const el=document.getElementById('d-statusBtns'); el.innerHTML='';
+  // Estado principal
+  ['pendiente','visitado','favorito'].forEach(s=>{
+    const b=document.createElement('button');
+    b.className='btn-status'+(d.status===s?` active-${s}`:'');
+    b.textContent={pendiente:'⏳ Pendiente',visitado:'✅ Visitado',favorito:'⭐ Favorito'}[s];
+    b.onclick=()=>patch(d.id,{status:s}); el.appendChild(b);
+  });
+  // Separador
+  const sep=document.createElement('span');
+  sep.style.cssText='width:1px;background:var(--border);margin:0 4px;align-self:stretch;display:inline-block;';
+  el.appendChild(sep);
+  // Descartado independiente
+  const bd=document.createElement('button');
+  bd.className='btn-status'+(d.descartado?' active-descartado':'');
+  bd.textContent='✖ Descartado';
+  bd.onclick=()=>patch(d.id,{descartado:!d.descartado});
+  el.appendChild(bd);
+}
+
+// ── NOTES ──────────────────────────────────────────────
+let notesTimer;
+window.saveNotes=function(){
+  clearTimeout(notesTimer);
+  notesTimer=setTimeout(()=>{ if(selectedId) patch(selectedId,{notas:document.getElementById('d-notes').value}); },800);
+};
+
+// ── LIST ───────────────────────────────────────────────
+window.toggleFilter = function(btn) {
+  const status = btn.dataset.status;
+  const activeClass = 'active-' + status;
+  btn.classList.toggle(activeClass);
+  renderList();
+};
+
+window.setSort=function(el){
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active'); sortBy=el.dataset.sort; renderList();
+};
+function renderList(){
+  const q=document.getElementById('search').value.toLowerCase();
+  const activeFilters = [...document.querySelectorAll('.fchip.active-pendiente,.fchip.active-visitado,.fchip.active-favorito,.fchip.active-descartado')].map(b=>b.dataset.status);
+  let list=Object.values(deptos).filter(d=>{
+    const matchQ = d.titulo.toLowerCase().includes(q)||(d.refs||'').toLowerCase().includes(q);
+    const effectiveStatus = d.descartado ? 'descartado' : d.status;
+    const matchF = activeFilters.length===0 || activeFilters.includes(effectiveStatus);
+    return matchQ && matchF;
+  });
+  list.sort((a,b)=>{
+    if(sortBy==='precio')  return (a.precio||9e9)-(b.precio||9e9);
+    if(sortBy==='puntaje') return (b.puntaje||0)-(a.puntaje||0);
+    if(sortBy==='m2')      return (b.m2||0)-(a.m2||0);
+    return b.fecha-a.fecha;
+  });
+  const total=Object.keys(deptos).length;
+  document.getElementById('counter').textContent=`${total} propiedad${total!==1?'es':''}`;
+  const el=document.getElementById('deptList');
+  if(!list.length){ el.innerHTML=`<div class="empty"><p>Nada por aquí.<br>Agregá tu primer depto con el botón +</p></div>`; return; }
+  if(document.getElementById('dashView').classList.contains('open')) renderDash();
+
+  el.innerHTML=list.map(d=>`
+    <div class="card${d.id===selectedId?' selected':''}" data-id="${d.id}" onclick="selectDepto('${d.id}')">
+      <div class="card-top">
+        <div class="card-title">${d.titulo}</div>
+        ${d.descartado
+        ? '<span class="badge badge-descartado">✖ Descartado</span>'
+        : `<span class="badge badge-${d.status}">${d.status.charAt(0).toUpperCase()+d.status.slice(1)}</span>`}
+      </div>
+      <div class="card-meta">
+        ${d.precio   ?`<span class="meta-item"><strong>$${Number(d.precio).toLocaleString('es-AR')}</strong>/mes</span>`:''}
+        ${d.expensas ?`<span class="meta-item">+ $${Number(d.expensas).toLocaleString('es-AR')} exp.</span>`:''}
+        ${d.m2       ?`<span class="meta-item"><strong>${d.m2}</strong> m²</span>`:''}
+        ${d.amb      ?`<span class="meta-item">${d.amb}</span>`:''}
+      </div>
+      ${d.puntaje?`<div class="stars">${'★'.repeat(d.puntaje)}<span style="color:var(--border)">${'★'.repeat(5-d.puntaje)}</span></div>`:''}
+      ${d.notas  ?`<div class="card-note">${d.notas}</div>`:''}
+    </div>`).join('');
+}
+
+// ── MODAL ──────────────────────────────────────────────
+window.openModal=function(d=null){
+  editingId=d?d.id:null;
+  document.getElementById('modal-title').textContent=d?'Editar departamento':'Agregar departamento';
+  document.getElementById('f-titulo').value  =d?.titulo  ||'';
+  document.getElementById('f-precio').value  =d?.precio  ||'';
+  document.getElementById('f-expensas').value=d?.expensas||'';
+  document.getElementById('f-m2').value      =d?.m2      ||'';
+  document.getElementById('f-amb').value     =d?.amb     ||'';
+  document.getElementById('f-link').value    =d?.link    ||'';
+  document.getElementById('f-refs').value    =d?.refs    ||'';
+  document.getElementById('f-aysa').value    =d?.aysa    ||'';
+  document.getElementById('f-abl').value     =d?.abl     ||'';
+  document.getElementById('f-geoaddr').value =d?.geoaddr ||d?.titulo||'';
+  document.getElementById('ai-url').value='';
+  document.getElementById('aiStatus').textContent='';
+  document.getElementById('aiStatus').style.color='';
+  document.getElementById('geo-suggestions').innerHTML='';
+  document.getElementById('geo-suggestions').style.display='none';
+  document.getElementById('overlay').classList.add('open');
+};
+window.closeModal=function(){ document.getElementById('overlay').classList.remove('open'); editingId=null; };
+window.handleOverlayClick=function(e){ if(e.target===e.currentTarget) closeModal(); };
+window.editSelected=function(){ const d=deptos[selectedId]; if(d) openModal(d); };
+
+// ── GEO AUTOCOMPLETE ───────────────────────────────────
+let geoTimer;
+window.geoSuggest = function(val) {
+  clearTimeout(geoTimer);
+  const box = document.getElementById('geo-suggestions');
+  if (!val || val.length < 4) { box.style.display='none'; return; }
+  geoTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val+', Buenos Aires, Argentina')}&limit=5&addressdetails=1`,
+        { headers: {'Accept-Language':'es'} }
+      );
+      const results = await r.json();
+      if (!results.length) { box.style.display='none'; return; }
+      box.innerHTML = results.map((res,i) => {
+        const label = res.display_name.replace(', Argentina','').replace(', Ciudad Autónoma de Buenos Aires','').replace(', Buenos Aires','');
+        return `<div onclick="selectGeoSuggestion('${label.replace(/'/g,"\'")}',${res.lat},${res.lon})"
+          style="padding:9px 12px;cursor:pointer;font-size:.82rem;border-bottom:1px solid var(--border);line-height:1.3;"
+          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
+      }).join('');
+      box.style.display='block';
+    } catch(e) { box.style.display='none'; }
+  }, 350);
+};
+
+window.selectGeoSuggestion = function(label, lat, lng) {
+  document.getElementById('f-geoaddr').value = label;
+  document.getElementById('geo-suggestions').style.display='none';
+  // store pre-resolved coords so saveDepto skips geocoding
+  window._pendingGeo = { lat: parseFloat(lat), lng: parseFloat(lng) };
+};
+
+// ── REGEOCODE ──────────────────────────────────────────
+window.regeoSelected = async function() {
+  const d = deptos[selectedId];
+  if (!d) return;
+  const addr = d.titulo || '';
+  if (!addr) return;
+  const geo = await geocode(addr);
+  if (geo) {
+    patch(selectedId, {lat: geo.lat, lng: geo.lng});
+    d.lat = geo.lat; d.lng = geo.lng;
+    refreshMarker(d);
+    map.flyTo([geo.lat, geo.lng], 14, {duration:.8});
+    if(window._zoneCircle) window._zoneCircle.remove();
+    window._zoneCircle = L.circle([geo.lat,geo.lng],{
+      radius:400,color:'#2D6A4F',fillColor:'#2D6A4F',fillOpacity:.08,weight:1.5,dashArray:'6,4'
+    }).addTo(map);
+    document.getElementById('d-geo-row').style.display='none';
+  } else {
+    alert('No se pudo ubicar la dirección. Intentá editarla para ser más específica.');
+  }
+};
+
+// ── VISITA ─────────────────────────────────────────────
+function renderVisita(d) {
+  const display = document.getElementById('d-visita-display');
+  const btnAgendar = document.getElementById('btn-agendar');
+  const form = document.getElementById('d-visita-form');
+
+  if (!d.visita || !d.visita.fecha) {
+    display.innerHTML = '';
+    btnAgendar.style.display = 'inline-flex';
+    form.style.display = 'none';
+    return;
+  }
+
+  btnAgendar.style.display = 'none';
+  form.style.display = 'none';
+
+  const v = d.visita;
+  // Comparar fechas en hora local Argentina
+  const [anio,mes,dia] = v.fecha.split('-').map(Number);
+  const fechaD = new Date(anio, mes-1, dia); // local, sin UTC
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const esHoy   = fechaD.getTime() === hoy.getTime();
+  const esPasada = fechaD < hoy;
+
+  const opcFecha = {weekday:'long', day:'numeric', month:'long'};
+  const fechaStr = fechaD.toLocaleDateString('es-AR', opcFecha);
+  const horaStr  = v.hora ? v.hora + 'h' : '';
+
+  const badgeClass = esPasada ? 'pasada' : esHoy ? 'hoy' : '';
+  const badgeTxt   = esPasada ? '✅ Realizada' : esHoy ? '⚡ Hoy' : '📅 Programada';
+
+  // Google Calendar link — fechas locales sin conversión UTC
+  const dtStart = v.fecha.replace(/-/g,'') + 'T' + (v.hora||'10:00').replace(':','') + '00-0300';
+  const dtEnd   = v.fecha.replace(/-/g,'') + 'T' + addHour(v.hora||'10:00') + '00-0300';
+  const gcTitle = encodeURIComponent('Visita: ' + d.titulo);
+  const gcDesc  = encodeURIComponent([v.contacto?'Contacto: '+v.contacto:'', v.notas||''].filter(Boolean).join('\n'));
+  const gcUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${gcTitle}&dates=${dtStart}/${dtEnd}&details=${gcDesc}`;
+
+  display.innerHTML = `
+    <div class="visita-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <span class="visita-badge ${badgeClass}">${badgeTxt} · ${fechaStr}${horaStr?' a las '+horaStr:''}</span>
+        <button class="btn-del-visita" onclick="deleteVisita()">quitar</button>
+      </div>
+      ${v.contacto ? `<div style="font-size:.8rem;"><span style="color:var(--ink2);font-family:var(--mono);font-size:.68rem;">CONTACTO</span><br>${v.contacto}</div>` : ''}
+      ${v.notas    ? `<div style="font-size:.8rem;"><span style="color:var(--ink2);font-family:var(--mono);font-size:.68rem;">NOTAS</span><br>${v.notas}</div>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <a class="btn-calendar" href="${gcUrl}" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg>
+          Agregar a Google Calendar
+        </a>
+        <button class="btn-ghost" style="font-size:.78rem;" onclick="toggleVisitaForm(true)">✏️ Editar</button>
+      </div>
+    </div>`;
+}
+
+function addHour(time) {
+  const [h,m] = time.split(':').map(Number);
+  const nh = (h+1)%24;
+  return String(nh).padStart(2,'0') + String(m).padStart(2,'0');
+}
+
+window.toggleVisitaForm = function(show) {
+  const form = document.getElementById('d-visita-form');
+  const btnAgendar = document.getElementById('btn-agendar');
+  form.style.display = show ? 'flex' : 'none';
+  btnAgendar.style.display = show ? 'none' : 'inline-flex';
+  if (show) {
+    const d = deptos[selectedId];
+    if (d?.visita) {
+      document.getElementById('v-fecha').value    = d.visita.fecha    || '';
+      document.getElementById('v-hora').value     = d.visita.hora     || '';
+      document.getElementById('v-contacto').value = d.visita.contacto || '';
+      document.getElementById('v-notas').value    = d.visita.notas    || '';
+    } else {
+      document.getElementById('v-fecha').value = '';
+      document.getElementById('v-hora').value  = '';
+      document.getElementById('v-contacto').value = '';
+      document.getElementById('v-notas').value    = '';
+    }
+  }
+};
+
+window.saveVisita = function() {
+  if (!selectedId) return;
+  const visita = {
+    fecha:    document.getElementById('v-fecha').value,
+    hora:     document.getElementById('v-hora').value,
+    contacto: document.getElementById('v-contacto').value.trim(),
+    notas:    document.getElementById('v-notas').value.trim(),
+  };
+  if (!visita.fecha) { alert('Seleccioná una fecha.'); return; }
+  patch(selectedId, { visita });
+  document.getElementById('d-visita-form').style.display = 'none';
+};
+
+window.deleteVisita = function() {
+  if (!selectedId || !confirm('¿Eliminar la visita programada?')) return;
+  patch(selectedId, { visita: null });
+};
+
+// ── VIEW SWITCHER ──────────────────────────────────────
+window.switchView = function(view) {
+  const isMap = view === 'mapa';
+  document.querySelector('.sidebar').style.display  = isMap ? '' : 'none';
+  document.getElementById('map').style.display      = isMap ? '' : 'none';
+  const det = document.getElementById('detail');
+  if (!isMap && det) det.style.display = 'none';
+  else if (isMap && det && selectedId) det.style.display = 'flex';
+  document.getElementById('dashView').classList.toggle('open', !isMap);
+  document.getElementById('tab-mapa').classList.toggle('active', isMap);
+  document.getElementById('tab-dash').classList.toggle('active', !isMap);
+  if (!isMap) { renderDash(); }
+  setTimeout(() => { if(map) map.invalidateSize(); }, 50);
+};
+
+// ── DASHBOARD ───────────────────────────────────────────
+function gastos() {
+  return ['internet','luz','gas','otro'].reduce((s,k)=>{
+    const v = parseFloat(document.getElementById('gi-'+k)?.value)||0;
+    return s+v;
+  },0);
+}
+
+function fmt(n){ return n ? '$'+Number(n).toLocaleString('es-AR') : '—'; }
+
+window.renderDash = function() {
+  const list = Object.values(deptos);
+  if (!list.length) return;
+
+  const extra = gastos();
+
+  const total      = list.length;
+  const visitados  = list.filter(d=>d.status==='visitado').length;
+  const favoritos  = list.filter(d=>d.status==='favorito').length;
+  const pendientes = list.filter(d=>d.status==='pendiente').length;
+
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="dash-stat"><div class="stat-val">${total}</div><div class="stat-lbl">Total cargados</div></div>
+    <div class="dash-stat"><div class="stat-val" style="color:var(--yellow)">${pendientes}</div><div class="stat-lbl">Pendientes</div></div>
+    <div class="dash-stat"><div class="stat-val" style="color:var(--accent)">${visitados}</div><div class="stat-lbl">Visitados</div></div>
+    <div class="dash-stat"><div class="stat-val" style="color:#7C3AED">${favoritos}</div><div class="stat-lbl">Favoritos ⭐</div></div>
+  `;
+
+  const sorted = [...list].sort((a,b)=>{
+    if(a.descartado !== b.descartado) return a.descartado ? 1 : -1;
+    if(a.status==='favorito' && b.status!=='favorito') return -1;
+    if(b.status==='favorito' && a.status!=='favorito') return 1;
+    return (b.puntaje||0)-(a.puntaje||0);
+  });
+
+  const totales = sorted.map(d=>(parseFloat(d.precio)||0)+(parseFloat(d.expensas)||0)+(parseFloat(d.aysa)||0)+(parseFloat(d.abl)||0)+extra).filter(v=>v>0);
+  const maxAlq = Math.max(...sorted.map(d=>parseFloat(d.precio)||0));
+  const maxExp = Math.max(...sorted.map(d=>parseFloat(d.expensas)||0));
+  const maxTot = Math.max(...totales);
+  const maxM2  = Math.max(...sorted.map(d=>parseFloat(d.m2)||0));
+  const minTot = Math.min(...totales);
+
+  const statusIcon = {pendiente:'⏳',visitado:'✅',favorito:'⭐'};
+  const numClass   = ['gold','silver','bronze'];
+
+  document.getElementById('dash-ranking').innerHTML = sorted.map((d,i)=>{
+    const alq = parseFloat(d.precio)||0;
+    const exp = parseFloat(d.expensas)||0;
+    const aysa = parseFloat(d.aysa)||0;
+    const abl  = parseFloat(d.abl)||0;
+    const tot  = alq+exp+aysa+abl+extra;
+    const m2  = parseFloat(d.m2)||0;
+    const pm2 = m2&&alq ? Math.round(alq/m2) : null;
+    const isMin = tot===minTot && tot>0;
+    const isMax = tot===maxTot && totales.length>1;
+    const stars = d.puntaje
+      ? '★'.repeat(d.puntaje)+'<span style="color:var(--border)">★</span>'.repeat(5-d.puntaje)
+      : '<span style="color:var(--border)">★★★★★</span>';
+    const nc = !d.descartado && i<3 ? numClass[i] : '';
+
+    return `<div class="rank-row${d.descartado?' descartado-row':''}" onclick="switchView('mapa');selectDepto('${d.id}')">
+      <div class="rank-num ${nc}">${d.descartado?'✖':i+1}</div>
+      <div class="rank-body">
+        <div class="rank-title">
+          ${statusIcon[d.status]||''}
+          <span>${d.titulo}</span>
+          ${d.descartado?'<span style="font-family:var(--mono);font-size:.65rem;background:var(--warn-lt);color:var(--warn);padding:2px 6px;border-radius:10px;">descartado</span>':''}
+        </div>
+        <div class="rank-bars">
+          ${alq?`<div class="rank-bar-row">
+            <span class="rank-bar-label">Alquiler</span>
+            <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${maxAlq?Math.round(alq/maxAlq*100):0}%;background:var(--accent);"></div></div>
+            <span class="rank-bar-val">${fmt(alq)}</span>
+          </div>`:''}
+          ${exp?`<div class="rank-bar-row">
+            <span class="rank-bar-label">Expensas</span>
+            <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${maxExp?Math.round(exp/maxExp*100):0}%;background:var(--yellow);"></div></div>
+            <span class="rank-bar-val">${fmt(exp)}</span>
+          </div>`:''}
+          ${(aysa||abl)?`<div class="rank-bar-row">
+            <span class="rank-bar-label">AYSA+ABL</span>
+            <div class="rank-bar-track"><div class="rank-bar-fill" style="width:40%;background:#94a3b8;"></div></div>
+            <span class="rank-bar-val">${fmt(aysa+abl)}</span>
+          </div>`:''}
+          ${(m2&&maxM2)?`<div class="rank-bar-row">
+            <span class="rank-bar-label">Superficie</span>
+            <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${Math.round(m2/maxM2*100)}%;background:#7C3AED;"></div></div>
+            <span class="rank-bar-val">${m2} m²</span>
+          </div>`:''}
+        </div>
+      </div>
+      <div class="rank-right">
+        <div class="rank-stars">${stars}</div>
+        <div class="rank-total ${isMin?'best':isMax?'worst':''}">${tot?fmt(tot):'—'}</div>
+        ${pm2?`<div class="rank-pm2">$${pm2.toLocaleString('es-AR')}/m²</div>`:''}
+        <span class="badge badge-${d.status}" style="font-size:.62rem;">${d.status}</span>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+
+// ── INIT ───────────────────────────────────────────────
+initMap();
+document.getElementById('appGrid').classList.add('no-detail');
+document.getElementById('loginScreen').classList.add('visible');
+setBadge('syncing');
+setTimeout(() => { if(map) map.invalidateSize(); }, 200);
+
+// ── BOOKMARKLET: leer params de URL ───────────────────
+(function(){
+  const p = new URLSearchParams(location.search);
+  if (!p.has('link')) return;
+  // Esperar a que el usuario esté logueado, después abrir modal
+  const tryOpen = () => {
+    if (!currentUid) { setTimeout(tryOpen, 500); return; }
+    document.getElementById('f-link').value    = p.get('link')    || '';
+    document.getElementById('f-titulo').value  = p.get('titulo')  || '';
+    document.getElementById('f-precio').value  = p.get('precio')  || '';
+    document.getElementById('f-expensas').value= p.get('expensas')|| '';
+    document.getElementById('f-m2').value      = p.get('m2')      || '';
+    document.getElementById('f-geoaddr').value = p.get('geoaddr') || p.get('titulo') || '';
+    const amb = p.get('amb');
+    if (amb) document.getElementById('f-amb').value = amb;
+    document.getElementById('modal-title').textContent = 'Agregar departamento';
+    document.getElementById('overlay').classList.add('open');
+    // limpiar URL sin recargar
+    history.replaceState({}, '', '/');
+  };
+  tryOpen();
+})();
+</script>
+</body>
+</html>
