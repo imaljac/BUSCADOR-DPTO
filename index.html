@@ -29,6 +29,18 @@
 </head>
 <body>
 <div id="root"></div>
+<div id="debug" style="position:fixed;bottom:0;left:0;right:0;background:#0d0d0d;color:#fff;font-size:11px;padding:8px 12px;z-index:999;font-family:monospace;max-height:120px;overflow:auto;">
+  Cargando...
+</div>
+<script>
+function dbg(msg) {
+  var el = document.getElementById('debug');
+  if(el) el.innerHTML += '<br>' + msg;
+}
+window.onerror = function(msg, src, line) { dbg('ERROR: ' + msg + ' (L' + line + ')'); };
+dbg('HTML cargado');
+window.addEventListener('firebase-ready', function(){ dbg('Firebase listo'); });
+</script>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
@@ -959,7 +971,9 @@ function App() {
   );
 }
 
+dbg('React renderizando');
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+dbg('React montado');
 </script>
 
 <script>
